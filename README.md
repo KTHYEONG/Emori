@@ -1,161 +1,169 @@
 # Emori
 
-> **아동·청소년의 뇌파 생체 신호(EEG)와 심리 상담 발화를 다중 모달로 결합하여 신체-언어 간 정서 괴리(가면성 우울)를 정량 검출하고 자동 임상 보고서를 생성하는 AI 종합 분석 시스템**
+**VR 체험 중 측정한 뇌파 데이터와 상담 인터뷰 텍스트를 함께 분석해, 상담자가 학생의 상태를 빠르게 파악하도록 돕는 멀티모달 AI 프로젝트**
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?style=flat&logo=python&logoColor=white)
-![Neural Engine](https://img.shields.io/badge/Neural_Engine-PyTorch_%7C_PEFT_QLoRA-EE4C2C.svg?style=flat&logo=pytorch&logoColor=white)
-![Embeddings](https://img.shields.io/badge/Embeddings-Sentence--BERT-orange.svg?style=flat)
-![Inference](https://img.shields.io/badge/Inference-Meta_Llama_3.3_70B_via_Groq_API-darkgreen.svg)
-![Architecture](https://img.shields.io/badge/Architecture-Multimodal_Contract_Guarded-blueviolet.svg)
-![Dashboard](https://img.shields.io/badge/Dashboard-Streamlit_Multi--Page-FF4B4B.svg?style=flat&logo=streamlit&logoColor=white)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](./config/Emotion_EEG/Library/library_ver.txt) [![Llama 3.1 8B](https://img.shields.io/badge/Model-Llama%203.1%208B%20Instruct-0467DF?style=flat-square)](./src/Emotion_EEG/DescriptiveSummary_Llama3/Llama3.py) [![LoRA](https://img.shields.io/badge/Fine--tuning-LoRA%20(4--bit)-7C3AED?style=flat-square)](./output/Emotion_EEG/Llama3_Result/adapter_config.json)
 
----
+> [!NOTE]
+> 2025학년도 2학기 산학협력프로젝트(협력기관 (주)모티버, 2025.09 ~ 12) **팀 프로젝트**입니다.
+> 저는 **뇌파 데이터 전처리**와 **Llama 3.1 8B 파인튜닝**을 맡았고, 이 README는 제 담당 부분을 중심으로 설명합니다.
 
-## 1. System Highlights
+## 🧭 개요
 
-| 핵심 엔지니어링 지표 | 실측 성과 / 보장 기준 | 아키텍처 불변식 및 강제 장치 |
-| :--- | :---: | :--- |
-| 🧠 **신체-언어 정서 괴리 검출** | **`100% 포착` / `이중 임계값 > 0.60`** | `EmoriAnalyzer`의 $(1 - S_{\mathrm{stability}}) \times P_{\mathrm{verbal}}$ 불변식 및 가면 우울 감지 가드 |
-| ⚡ **LLM 대화 분석 지연시간** | **`95.0% 단축` (`30.0s` $\to$ `1.5s`)** | Meta Llama 3.3 70B(`llama-3.3-70b-versatile`)를 Groq API/LPU로 호출하고, 로컬 Meta Llama 3.1 8B Instruct를 4-bit QLoRA로 운용하는 하이브리드 분기 |
-| 🎯 **생체 지표 정규화 무결성** | **`오차 0.00%` / `Clamp01 [0.0, 1.0]`** | 6대 뇌파 지표 클램핑 불변식 강제 및 Russell 정서 원형 모형(Valence/Arousal/TE) 3차원 투영 |
-| ⏱️ **세션 단계별 가중합 보존** | **`보존 오차 0.00%` ($\sum w_i = 1.0$)** | Step2(0.2) + Step3(0.3) + Step4(0.5) 가중치 보존 법칙 및 VR 적응 피로도 수학적 보정 |
-| 🌐 **시맨틱 토픽망 안정성** | **`코사인 유사도 ≥ 0.60` / `1,200ms 동결`** | `jhgan/ko-sbert-multitask` 임베딩 및 ForceAtlas2 물리 엔진 1,000회 연산 후 `Auto-Freeze` |
-| 🛡️ **파이프라인 결함 방어율** | **`비정상 중단 0건` / `8단계 Fail-Safe`** | 단계별 I/O 스키마 검증 및 HWP 파싱/GPU 결손 시 Graceful Fallback 경로 원천 보장 |
+협력 기업은 VR 감정놀이터라는 프로그램으로 학생의 감정과 뇌파를 수집합니다. 상담 현장에는 두 가지 비효율이 있었습니다.
 
----
+- 상담 전문가가 솔루션이 만든 **리포트를 보고 다시 해석**해야 했습니다.
+- 상담 내용은 녹음되지만 **텍스트로만 저장**되어, 이것도 따로 분석해야 했습니다.
 
-## 2. Tech Stack
+Emori는 이 두 단계를 AI로 줄입니다. 뇌파·VR 데이터는 **읽기 쉬운 서술형 리포트**로 바꾸고, 인터뷰 텍스트는 **감정 키워드**로 정리한 뒤 둘을 한 화면에서 함께 보여 줍니다. 말로는 "괜찮다"고 해도 몸은 긴장하고 있는 경우처럼, 말과 몸의 신호가 어긋나는 지점을 찾는 데 도움을 주려는 목적입니다.
 
-| 분류 | 기술 | 채택 근거 및 트레이드오프 |
-| :--- | :--- | :--- |
-| **Language & Tooling** | `Python 3.11+`, `uv` | 현대적 타입 힌팅과 `uv` 기반의 초고속 가상환경 빌드 및 결정론적 의존성 격리 확보 |
-| **Deep Learning & LLM** | `PyTorch`, `PEFT (QLoRA 4-bit)`, `Meta Llama 3.1 8B Instruct`, `Meta Llama 3.3 70B via Groq API` | 로컬 요약 모델은 Meta Llama 3.1 8B Instruct를 4-bit QLoRA로 경량화하고, 상담 발화 구조화는 Meta Llama 3.3 70B를 Groq API로 호출하여 지연시간과 자원 효율을 분리 최적화 |
-| **NLP & Embeddings** | `Sentence-BERT`, `python-mecab-ko`, `olefile` | OLE 구조 HWP 및 텍스트에서 은유적 표현을 고차원 의미 공간으로 임베딩하여 정서 인과망 도출 |
-| **Graph & Visualization** | `NetworkX`, `PyVis`, `Matplotlib` | ForceAtlas2 물리 레이아웃 기반 대화형 토픽망과 5대 심리 지표 방사형 레이더 차트 렌더링 |
-| **Application & UI** | `Streamlit (Multi-Page)` | 파일 업로드부터 인터랙티브 그래프 탐색, 임상 보고서 확인까지 단일 반응형 웹 인터페이스 제공 |
-| **Verification & Quality** | `Python AST`, `Type Guard`, `Invariant Tests` | 단계별 계약 검증과 수치 경계(`clamp01`)를 검증하여 런타임 데이터 왜곡 0건 강제 |
+## 🙋 나의 역할
 
----
+| 구분 | 영역 | 내용 |
+| :---: | :--- | :--- |
+| 🙋 **나** | 뇌파 전처리 | 뇌파·VR 결과 TXT를 JSON으로 통합, 값·라벨 정리 |
+| 🙋 **나** | 학습 데이터 | 규칙 기반 증강 50세트, 정답 문장 4문체 작성 |
+| 🙋 **나** | 모델 | Llama 3.1 8B LoRA 파인튜닝, 서술형 요약 생성 |
+| 👥 팀원 | 인터뷰 분석 | 상담 텍스트의 감정 키워드 추출 |
+| 👥 팀원 | 연관 분석 | 키워드·감정 연관 분석, 통합 대시보드 |
 
-## 3. Daily Workflow & Pipeline
+🏆 2025 한국정보기술학회 추계종합학술대회에서 이 프로젝트의 논문이 **우수논문상(동상)**을 받았습니다(팀 논문).
 
-| 단계 | 라이프사이클 단계 | 입력 소스 및 처리 내용 | 핵심 산출물 |
-| :---: | :--- | :--- | :--- |
-| 🌅 **Step 1** | **원시 데이터 수집 및 정제** | VR 뇌파 텍스트 로그 블록 파싱 $\to$ HWP 상담 녹취록 OLE 바이너리 추출 $\to$ Q&A 문맥 정제 | 정형화된 JSON 및 텍스트 전문 |
-| ⚡ **Step 2** | **생체 정량화 및 시맨틱 추론** | 6대 뇌파 지표 정규화 $\to$ Russell 정서 모형 투영 $\to$ Meta Llama 3.3 70B(Groq API) 기반 감정·대상·강도 추출 | 정서가·각성도 및 감정 스키마 |
-| 🌙 **Step 3** | **다중 모달 융합 및 토픽망 생성** | SBERT 코사인 유사도 0.60 엣지 생성 $\to$ ForceAtlas2 레이아웃 안정화 $\to$ 신체-언어 괴리도 산출 | 인터랙티브 HTML 및 괴리도 점수 |
-| 🛡️ **Step 4** | **시각화 렌더링 및 최종 보고서** | 로컬 Meta Llama 3.1 8B Instruct(4-bit QLoRA) 임상 요약 + 레이더/괴리 분석 차트 생성 $\to$ 마크다운 임상 보고서 합성 $\to$ Streamlit 대시보드 발행 | 종합 임상 보고서 및 시각화 번들 |
+## 🏗️ 시스템 구성
+
+두 갈래 입력을 각각 분석한 뒤 합칩니다. 파란색이 제가 맡은 구간입니다.
 
 ```mermaid
-flowchart TD
-    classDef vendor fill:#f1f3f5,stroke:#495057,stroke-width:1px,color:#212529;
-    classDef data fill:#e7f5ff,stroke:#1971c2,stroke-width:2px,color:#0c4a6e;
-    classDef research fill:#ebfbee,stroke:#2f9e44,stroke-width:2px,color:#14532d;
-    classDef remote fill:#f3f0ff,stroke:#7950f2,stroke-width:2px,color:#3b0764;
-    classDef live fill:#fff4e6,stroke:#f76707,stroke-width:2px,color:#7c2d12;
-
-    V1["원시 데이터: VR 뇌파 로그 및 HWP 상담 녹취록"]:::vendor
-    P1["데이터 정제: TxtToJson 파서 및 OLE 텍스트 추출"]:::data
-    P2["생체 정량화: 6대 지표 정규화 및 Russell 모델 투영"]:::research
-    L1["시맨틱 추출: Meta Llama 3.3 70B via Groq API"]:::remote
-    L2["임상 요약: Meta Llama 3.1 8B Instruct + 4-bit QLoRA"]:::remote
-    F1["다중 모달 융합: 신체 안정도 대 언어 긍정성 괴리도 산출"]:::live
-    G1["토픽 네트워크: SBERT 코사인 0.60 및 ForceAtlas2"]:::live
-    R1["최종 발행: 방사형 차트 및 종합 임상 마크다운 보고서"]:::data
-
-    V1 -->|정규표현식 및 바이너리 스트림 변환| P1
-    P1 -->|정형 뇌파 JSON 전달| P2
-    P1 -->|정제된 Q&A 텍스트 전달| L1
-    P2 -->|정형 생체 지표| L2
-    P2 -->|생체 스트레스 및 이완도| F1
-    L1 -->|언어 긍정성 점수| F1
-    L1 -->|감정·대상 노드 집합 전달| G1
-    L2 -->|임상 서술 요약문| R1
-    F1 -->|괴리도 지표 및 경보 플래그| R1
-    G1 -->|안정화된 그래프 HTML| R1
+flowchart LR
+    subgraph EEG["뇌파·VR 경로"]
+        A["VR 감정놀이터 결과 + 14채널 뇌파 TXT"] --> B["JSON으로 통합<br/>값·라벨 정리"]
+        B --> C["규칙 기반 증강<br/>50세트"]
+        C --> D["Llama 3.1 8B<br/>LoRA 파인튜닝"]
+        D --> E["서술형 리포트"]
+    end
+    subgraph TXT["인터뷰 경로 (팀원)"]
+        F["상담 인터뷰 HWP"] --> G["형태소 분석 + 감정 분석<br/>키워드 추출"]
+    end
+    E --> H["연관 분석 대시보드"]
+    G --> H
+    classDef mine fill:#dbeafe,stroke:#2563eb,color:#0f172a;
+    class A,B,C,D,E mine;
 ```
 
----
+- 뇌파 경로는 eMotiv 장비의 뇌파 값(스트레스, 몰입, 이완, 흥분, 흥미, 집중)과 VR 감정 결과를 한 JSON으로 합쳐 모델 입력으로 씁니다.
+- 인터뷰 경로는 팀원이 맡았고, 논문에서는 형태소 분석(Mecab)과 BERT를 결합한 감정 키워드 추출로 설명합니다.
 
-## 4. Top 5 Real-world Engineering Invariants (핵심 챌린지)
+## 🔧 핵심 설계 결정
 
-### 1. 신체 생체 신호와 언어적 진술 간 '가면성 우울' 괴리 차단
-* 🚨 **문제**: 아동·청소년 내담자가 방어기제나 사회적 바람직성 편향으로 인해 심한 스트레스 속에서도 언어적으로는 "기분이 좋다"고 진술하여 위험군을 놓침.
-* 📐 **원칙**: 언어적 진술만으로 정서를 판정하지 않으며, 신체 자율신경계 반응(뇌파 스트레스/이완)과 언어 긍정성을 교차 검증해야 함.
-* 💡 **해결**: `EmoriAnalyzer`에서 괴리도 수식 `(1.0 - stability) * verbal_positivity`를 구현하고, `stress > 0.60` 및 `verbal_positivity > 0.60` 이중 임계값 경보를 강제해 은폐된 정서 위기를 100% 식별.
+각 결정을 **문제 → 분석(대안 비교) → 선택 → 결과** 순서로 정리했습니다.
 
-### 2. 거대언어모델(LLM) 환각 및 비정형 출력에 대한 JSON 스키마 강제
-* 🚨 **문제**: LLM이 자유 양식 줄글을 반환하거나 키 명칭을 임의로 변경하여 후속 파이프라인 파싱에서 `KeyError`가 발생하고 실행이 중단됨.
-* 📐 **원칙**: 모든 자연어 추출 모델은 엄격한 사전 정의 JSON 스키마(`target`, `emotion`, `intensity`) 객체만을 반환해야 함.
-* 💡 **해결**: Meta Llama 3.3 70B를 Groq API의 `llama-3.3-70b-versatile` 모델 ID로 호출하고, `response_format={"type": "json_object"}` 및 Few-Shot 출력 명세를 적용해 후속 파이프라인 입력을 구조화.
+### 🧠 1. 서술형 요약에 LLM 파인튜닝을 쓴 이유
 
-### 3. 은유적·문맥적 표현 분리와 SBERT 코사인 유사도 임계값 설계
-* 🚨 **문제**: "노란색 기분", "숨이 턱 막힘" 같은 비유적 발화와 "비즈 거래(긍정)" vs "강요된 거래(부정)"처럼 동일 단어의 상반된 감정을 어휘 사전으로 분별 불가.
-* 📐 **원칙**: 단어 형태가 아닌 문맥 임베딩 벡터 간의 의미적 거리를 기반으로 감정 인과 관계망을 구성해야 함.
-* 💡 **해결**: 한국어 특화 `jhgan/ko-sbert-multitask` 임베딩을 거쳐 코사인 유사도 0.60 임계값을 적용함으로써 노이즈 엣지를 차단하고 순수 감정 토픽망을 도출.
+- **문제:** 뇌파 지표는 수치라서 상담자가 바로 읽기 어렵습니다. 협력 기업과 협의해 "주어진 데이터를 전처리한 결과를 바탕으로 AI가 정해진 형식에 가까운 서술형 답변을 한다"는 방향으로 정했습니다.
+- **분석:** 규칙 기반 템플릿은 문장이 반복적이고 기계적이며, "스트레스가 높으면 높음"처럼 지표 하나씩만 해석합니다. 반대로 LLM을 그대로 호출하면 도메인 표현이 부족하고 일반적인 말만 합니다. 학습에 쓸 수 있는 데이터도 100개 이하로 적었습니다.
+- **선택:** 파인튜닝에 데이터 증강과 여러 문체의 정답 문장을 결합했습니다.
+- ✅ **결과:** 여러 지표가 함께 움직이는 패턴을 한 문장으로 서술하는 요약이 생성됩니다(아래 결과 예시 참고). 정량 평가는 하지 않았습니다(한계 항목 참고).
 
-### 4. 대화형 시맨틱 그래프의 물리 엔진 발산(Explosion) 방지 및 자동 동결
-* 🚨 **문제**: 다중 노드 시뮬레이션 시 반발력과 인력 간 진동으로 노드가 화면 밖으로 튕겨 나가고 브라우저 메인 스레드 CPU 점유율이 100%로 치솟음.
-* 📐 **원칙**: 물리 레이아웃은 시각적 가독성을 확보한 즉시 연산을 정지하여 클라이언트 렌더링 자원을 보호해야 함.
-* 💡 **해결**: ForceAtlas2 파라미터를 최적화하고, `stabilizationIterationsDone` 이벤트 발생 후 1,200ms 시점에 `physics.enabled: false`를 주입하는 Auto-Freeze 스크립트 적용.
+### 🧪 2. 데이터를 증강한 방법
 
-### 5. 결손 데이터 및 이종 런타임 환경에 대응하는 8단계 Fail-Safe 오케스트레이션
-* 🚨 **문제**: HWP 라이브러리 미지원, GPU VRAM 부족, 외부 API 일시 타임아웃 발생 시 전체 파이프라인이 즉각 크래시되어 분석이 전면 중단됨.
-* 📐 **원칙**: 특정 모달리티나 컴포넌트의 결손이 전체 시스템 다운타임으로 전파되지 않도록 단계별 결함을 완전 격리해야 함.
-* 💡 **해결**: 3단계 전처리 및 8단계 분석을 독립 `try-except`로 캡슐화하고, 로컬 PEFT 추론 실패 시 대체 경로, 키워드 누락 시 기본 안전값 할당 등 무중단 폴백 구조 구축.
+- **문제:** 제공받은 데이터가 학생 데이터라 양이 적습니다.
+- **분석:** 단순 무작위로 만들면 스트레스와 이완이 함께 높은 식의 비현실적인 조합이 생깁니다. 러셀의 감정 이론처럼 정서 쪽 이론을 처음 공부하며 참고해, 규칙을 직접 정했습니다.
+- **선택:** 처음 9세트는 제공받은 기록의 흐름을 유지하고, 나머지는 ±20% 범위에서 생성했습니다. 스트레스는 이완의 반대 방향으로 만들고, 서로 어긋나는 극단 조합의 빈도는 제한했습니다. 시드를 고정해 재현할 수 있습니다([코드](./src/Emotion_EEG/DataAugmentation/DataAugmentation.py)).
+- ✅ **결과:** 50세트를 생성했고, 감정 종류와 강도 값은 모두 단어표에 있는 값입니다. 다만 실제 사람 데이터와 얼마나 비슷한지는 검증하지 못했습니다.
 
----
+### 🏷️ 3. 정답 문장을 4가지 문체로 쓴 이유
 
-## 5. Verified Performance Matrix (실측 정본 성과)
+- **문제:** LLM이 항상 같은 말만 하면 리포트가 단조롭고, 학습 데이터 양도 부족합니다.
+- **분석:** 같은 입력에도 여러 관점의 정답을 주면 표현이 다양해지고, 학습 데이터도 늘릴 수 있다고 판단했습니다.
+- **선택:** 한 입력에 4가지 기준으로 정답을 작성했습니다([기준](./config/Emotion_EEG/Llama3_Assistant_Rule/Assistant_Rule.txt)): 상반된 지표 강조, 긍정 결과 강조, 흐름과 전문 어휘 강조, 단순 나열.
+- ✅ **결과:** 70세트 × 4문체 = 280개를 만들었습니다([라벨](./data/Emotion_EEG/Llama3_Assistant_Data/Manual_Assistant_Labels.csv)).
 
-> **출처**: `output/Emotion_EEG/Report_Json_Data/Report_Data.json`, `output/llama3/`  
-> **조건**: VR 뇌파 4단계 세션 로그 및 사후 심리 상담 전사록 실제 참가자 데이터셋 검증  
-> **평가 기준**: 생체 스트레스 지수와의 상충 여부 판별 정밀도 및 엔드투엔드 파이프라인 지연시간
+### ✂️ 4. 단순 나열 문체를 학습에서 뺀 이유
 
-| 모델 / 파이프라인 | 방식 | 정서 괴리 검출율 | 추론 지연시간 (건당) | 의미망 엣지 정확도 |
-| :--- | :---: | :---: | :---: | :---: |
-| **기준 모델** (단일 모달 / 어휘 빈도) | Base | 0.0% (언어 긍정성만 관측) | ~30.0s (로컬 풀 모델) | 41.2% (단순 키워드 카운팅) |
-| **개선 모델** (Emori 다중 모달 파이프라인) | Advanced | **`100%` (`stress > 0.60` 감지)** | **`1.5s` (95.0% 단축)** | **`89.6%` (코사인 0.60 임계망)** |
+- **문제:** 4번째 문체의 답변이 너무 형식적이었습니다.
+- **분석:** 생성 결과를 읽어 보고 부자연스럽다고 판단했습니다. 정량 비교가 아니라 직접 읽고 내린 판단입니다.
+- **선택:** 단순 나열을 제외하고(280개 → 210개), 학습 80% : 검증 20%로 나눠 에폭마다 검증했습니다. 에폭은 10에서 7로 줄였습니다("7로도 충분하다"는 커밋 메모 기준이며 비교 수치는 남아 있지 않습니다).
+- ✅ **결과:** 학습 168개, 검증 42개로 학습합니다([코드](./src/Emotion_EEG/DescriptiveSummary_Llama3/Llama3.py)).
 
-- **가면 우울 식별력**: 언어 발화에서 긍정 어휘가 지배적이더라도 생체 스트레스가 0.60을 초과할 경우 경보를 발생시켜 잠재적 위기 내담자를 100% 식별.
-- **연산 처리 효율**: 상담 발화 구조화는 Meta Llama 3.3 70B를 Groq API로 호출하고, 임상 서술 요약은 로컬 Meta Llama 3.1 8B Instruct 4-bit QLoRA를 사용해 역할별 추론 자원을 분리.
+### 🔤 5. 값 이름 통일
 
----
+- **문제:** 감정 강도가 코드에서는 `Full / Half / Low`, 원본에서는 `Highest / High / Low / Least`였고 `Disgust`도 원본에서는 `Dislike`였습니다.
+- **선택:** 원본 값을 기준으로 단어표와 증강 코드를 함께 고치고 증강 JSON을 다시 만들었습니다.
+- ✅ **결과:** 증강 50세트의 감정과 강도 값이 모두 단어표에 있는 값입니다.
 
-## 6. Architecture Layer Contracts
+## 📊 결과
+
+뇌파 지표 입력 형식과 생성된 요약의 예시입니다. 입력 형식과 생성 문장은 각각 저장소 파일에서 발췌한 것입니다.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/result-card.dark.png">
+  <img alt="뇌파 6지표 입력 형식과 생성 요약 예시" src="./docs/assets/result-card.light.png" width="90%">
+</picture>
+</p>
+
+생성된 리포트는 3단계(체험의 시작, 중간, 마지막)를 각각 한 문장씩 서술합니다. 전체 예시는 [`Generated_Report.txt`](./output/Emotion_EEG/Llama3_Result/Generated_Report.txt)에 있습니다.
+
+## ⚠️ 한계
+
+- 파인튜닝 결과의 **정량 평가**(정확도, 손실 곡선 비교 등)를 하지 않았습니다. 품질은 생성 문장을 직접 읽고 확인한 수준입니다.
+- 학습 데이터는 소규모 실제 기록과 규칙 기반 증강본이 섞여 있어, 실제 학생 분포와의 유사도는 검증하지 못했습니다.
+- 증강에 쓴 감정 단어 대응에는 임의로 정한 값이 포함되어 있어, 협력 기업의 실제 표준값 확인이 필요합니다.
+- 자동 테스트와 CI는 없습니다.
+
+## 🧱 기술 스택
+
+| 구분 | 사용 기술 |
+| :--- | :--- |
+| 언어 | Python 3.11 |
+| 모델 | Meta Llama 3.1 8B Instruct (4비트 NF4 양자화) |
+| 학습 | Transformers, TRL(SFT), PEFT(LoRA), bitsandbytes |
+| 데이터 | JSON, JSONL, pandas, numpy |
+
+LoRA 설정은 r=32, alpha=16, dropout=0.1이고 대상은 `q_proj`, `v_proj`입니다. 학습은 에폭 7, 배치 1 × 누적 8, 학습률 3e-4(cosine)로 했습니다. 개인 PC(NVIDIA RTX 4070 Ti)에서 4비트 양자화와 LoRA로 학습했습니다.
+
+## 📂 프로젝트 구조
+
+제가 작성한 부분입니다.
 
 ```text
-Layer 4: UI & 대시보드 계층 (streamlit_app.py, pages/)
-   ↓
-Layer 3: 오케스트레이션 및 리포트 엔진 (src/main.py, FinalReportGenerator.py)
-   ↓
-Layer 2: 다중 모달 융합 분석 및 그래프 엔진 (EmoriAnalyzer, EmoriVisualizer, graph_renderer)
-   ↓
-Layer 1: 딥러닝 추론 및 자연어 처리 코어 (Meta Llama 3.1 8B + PEFT, Meta Llama 3.3 70B via Groq API, SentenceTransformer, Mecab)
-   ↓
-Layer 0: 데이터 수집 및 파서 기반 (TxtToJson, olefile, Config, Prompts)
+src/Emotion_EEG/
+├── TxtToJson/                  # 뇌파·VR 결과 TXT를 JSON으로 통합
+├── KeyWord/                    # 감정 단어표
+├── DataAugmentation/           # 규칙 기반 증강
+├── JsonToJsonl/                # 학습·추론용 JSONL 변환
+├── DescriptiveSummary_Llama3/  # LoRA 학습(Llama3.py), 추론(Llama3Main.py)
+└── Run/run_pipeline.py         # 변환부터 요약 생성까지 이어서 실행
+data/Emotion_EEG/Llama3_Assistant_Data/   # 정답 문장 라벨(CSV)
+config/Emotion_EEG/                       # 문체 기준, 라이브러리 버전
+output/Emotion_EEG/                       # 증강 JSON, JSONL, LoRA 어댑터, 생성 결과
 ```
 
-- **Layer 0 (Ingestion & Foundation)**: `TxtToJson`, `olefile` 파서 및 기본 프롬프트. 상위 계층 의존을 전면 배제.
-- **Layer 1 (Deep Learning & NLP)**: Meta Llama 3.3 70B의 Groq API 호출, Meta Llama 3.1 8B Instruct의 로컬 PEFT/QLoRA 추론 및 임베딩 추론 모듈. UI 프레임워크와 결합 금지.
-- **Layer 2 (Multimodal Analytics)**: 생체-언어 괴리도 연산 및 그래프 토폴로지 구성. 순수 도메인 비즈니스 로직 캡슐화.
-- **Layer 3 (Orchestration)**: 8단계 파이프라인 조율 및 마크다운 최종 보고서 렌더링.
-- **Layer 4 (UI & Presentation)**: Streamlit 멀티페이지 기반 대화형 웹 인터페이스 및 반응형 시각화.
+## 🚀 시작하기
 
----
-
-## 7. Quick Start & Verification
+학습에는 CUDA 환경의 GPU와 Hugging Face의 Llama 3.1 모델 접근 승인이 필요합니다. 라이브러리 버전과 설정 절차는 [`library_ver.txt`](./config/Emotion_EEG/Library/library_ver.txt)에 있습니다. 원본 뇌파 TXT에는 참가자 정보가 들어 있어 별도로 관리해야 합니다.
 
 ```bash
-# 1. 의존성 동기화
-uv sync
+pip install -r requirements.txt   # 그리고 library_ver.txt의 학습용 라이브러리·PyTorch(CUDA) 설치
 
-# 2. 시스템 아키텍처 및 불변식 정적 검증
-uv run python src/test.py
-
-# 3. 단일 참가자 엔드투엔드 파이프라인 실행
-uv run python src/main.py [참가자_ID]
-
-# 4. 인터랙티브 웹 대시보드 기동
-uv run streamlit run streamlit_app.py
+# 저장소 루트에서 실행
+python src/Emotion_EEG/DataAugmentation/DataAugmentation.py   # 증강 50세트
+python src/Emotion_EEG/JsonToJsonl/JsonToJsonL.py             # 학습용 JSONL
+python src/Emotion_EEG/DescriptiveSummary_Llama3/Llama3.py    # LoRA 학습
+python src/Emotion_EEG/Run/run_pipeline.py                    # 변환부터 요약 생성
 ```
+
+## 🤖 개발 과정에서의 AI 활용
+
+AI 도구는 아이디어를 정리하고, 처음 접한 정서 이론을 이해하고, 코드를 쓰는 데 사용했습니다. **학습 설정과 결과의 확인은 직접 했습니다.**
+
+| AI에 맡긴 일 | 직접 한 일 |
+| :--- | :--- |
+| 코드 작성 | 증강 규칙 정하기(러셀의 감정 이론 등을 참고) |
+| 아이디어 정리 | 정답 문장의 4가지 문체 설계와 작성 |
+| 정서 이론 같은 도메인 개념 학습 보조 | 학습 설정·수치 확인, 생성된 문장을 읽고 검증 |
+
+## 📚 참고
+
+- 논문: 김도현, 김태형, 신현우, 바트바야르뭉흐밧, 황성원, 김재수, 「정서, 뇌파데이터와 상담 텍스트의 다중 모달 연관 분석 기반 심리 상태 진단 시스템」, 2025 한국정보기술학회 추계종합학술대회.
+- 이 프로젝트는 [dozzzang/Emori](https://github.com/dozzzang/Emori)를 fork한 저장소입니다.
